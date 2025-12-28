@@ -1,11 +1,42 @@
 import os
-from typing import List, Optional
+import asyncio
+import functools
+from typing import List, Optional, Any, Callable
 try:
     from zep_cloud import ZepClient
-    from zep_cloud.api import Message
+    from zep_cloud.api import Message, SearchFilters
 except ImportError:
     ZepClient = None
     Message = None
+    SearchFilters = None
+
+def retry_async(max_retries: int = 3, base_delay: float = 0.01):
+    """Decorator for retrying async methods with exponential backoff.
+    
+    Retries on transient errors like 429 (Rate Limit) and 5xx (Server Error).
+    """
+    def decorator(func: Callable):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    err_msg = str(e).lower()
+                    print(f"DEBUG retry_async caught: {err_msg}")
+                    # Retry only on transient errors
+                    if any(code in err_msg for code in ["429", "500", "502", "503", "504", "timeout"]):
+                        delay = base_delay * (2 ** attempt)
+                        print(f"Transient error in {func.__name__}: {e}. Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                    else:
+                        print(f"Non-transient error in {func.__name__}: {e}. Re-raising.")
+                        raise e
+            raise last_exception
+        return wrapper
+    return decorator
 
 class MemoryManager:
     """Manages interactions with Zep Cloud memory services.
@@ -33,6 +64,22 @@ class MemoryManager:
         else:
             print("WARNING: ZepClient or API key missing. Running in mock mode.")
 
+    async def validate_connection(self) -> bool:
+        """Validates the Zep Cloud connection by attempting a lightweight API call.
+
+        Returns:
+            bool: True if connection is valid, False otherwise.
+        """
+        if not self.client:
+            return False
+        try:
+            # list_all is a lightweight call to verify auth
+            await self.client.user.list_all(page_size=1)
+            return True
+        except Exception as e:
+            print(f"Zep Connection Validation Failed: {e}")
+            return False
+
     async def get_context(self, thread_id: str, domain: Optional[str] = None) -> str:
         """Retrieves assembled context from Zep for the given thread.
 
@@ -53,20 +100,30 @@ class MemoryManager:
             return mock_msg
         
         try:
-            from zep_cloud.api import SearchFilters
-            
-            filters = None
-            if domain:
-                filters = SearchFilters(node_labels=[domain] if domain != "personal" else ["Personal"])
-
-            context_response = await self.client.thread.get_user_context(
-                thread_id, 
-                search_filters=filters
-            )
-            return context_response.context
+            print(f"DEBUG calling _get_context_internal for {thread_id}")
+            return await self._get_context_internal(thread_id, domain)
         except Exception as e:
+            err_msg = str(e).lower()
+            print(f"DEBUG get_context caught fallback Exception: {err_msg}")
+            if "401" in err_msg:
+                return "Auth Error: Invalid Zep API Key."
             print(f"Zep Retrieval Error: {e}")
             return "Error retrieving context from Zep."
+
+    @retry_async(max_retries=3)
+    async def _get_context_internal(self, thread_id: str, domain: Optional[str] = None) -> str:
+        """Internal helper for context retrieval with retry logic."""
+        from zep_cloud.api import SearchFilters
+        
+        filters = None
+        if domain:
+            filters = SearchFilters(node_labels=[domain] if domain != "personal" else ["Personal"])
+
+        context_response = await self.client.thread.get_user_context(
+            thread_id, 
+            search_filters=filters
+        )
+        return context_response.context
 
     async def add_interaction(self, thread_id: str, user_msg: str, ai_msg: str):
         """Adds a user and assistant interaction to the Zep thread.
@@ -80,13 +137,18 @@ class MemoryManager:
             return
 
         try:
-            messages = [
-                Message(role="user", content=user_msg),
-                Message(role="assistant", content=ai_msg)
-            ]
-            await self.client.thread.add_messages(thread_id, messages=messages)
+            await self._add_interaction_internal(thread_id, user_msg, ai_msg)
         except Exception as e:
             print(f"Zep Storage Error: {e}")
+
+    @retry_async(max_retries=3)
+    async def _add_interaction_internal(self, thread_id: str, user_msg: str, ai_msg: str):
+        """Internal helper for interaction storage with retry logic."""
+        messages = [
+            Message(role="user", content=user_msg),
+            Message(role="assistant", content=ai_msg)
+        ]
+        await self.client.thread.add_messages(thread_id, messages=messages)
 
     async def search_knowledge_graph(self, user_id: str, query: str) -> List[str]:
         """Searches the Zep Graphiti knowledge graph for relevant facts.
