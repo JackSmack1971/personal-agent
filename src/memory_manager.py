@@ -4,7 +4,7 @@ import functools
 from typing import List, Optional, Any, Callable
 try:
     from zep_cloud import ZepClient
-    from zep_cloud.api import Message, SearchFilters
+    from zep_cloud.types import Message, SearchFilters
 except ImportError:
     ZepClient = None
     Message = None
@@ -113,11 +113,13 @@ class MemoryManager:
     @retry_async(max_retries=3)
     async def _get_context_internal(self, thread_id: str, domain: Optional[str] = None) -> str:
         """Internal helper for context retrieval with retry logic."""
-        from zep_cloud.api import SearchFilters
+        from zep_cloud.types import SearchFilters
         
         filters = None
         if domain:
-            filters = SearchFilters(node_labels=[domain] if domain != "personal" else ["Personal"])
+            # Consistent casing for Bio-Lock
+            label = domain.capitalize()
+            filters = SearchFilters(node_labels=[label])
 
         context_response = await self.client.thread.get_user_context(
             thread_id, 
