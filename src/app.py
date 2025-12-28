@@ -1,28 +1,42 @@
 import gradio as gr
 import asyncio
 import uuid
+import logging
 from src.orchestrator import app as graph
 from langchain_core.messages import HumanMessage, AIMessage
+from src.utils.logger import gradio_handler, setup_logging
+
+# Initialize logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 # Custom User ID / Thread ID for persistence
 THREAD_ID = str(uuid.uuid4())
 
-async def chat_interaction(message, history):
-    """Async handler for the Gradio chat interface.
+async def chat_interaction(message, history, zep_key, openrouter_key, domain_filter):
+    """Async handler for the Gradio chat interface with enhanced inputs.
 
     Coordinates message processing via the LangGraph orchestrator, 
-    streaming intermediate status and final AI responses back to the UI.
+    injecting settings from the UI sidebar.
 
     Args:
         message (str): The user's input message.
-        history (List[dict]): The conversation history in Gradio message format.
+        history (List[dict]): The conversation history.
+        zep_key (str): Zep API Key from Sidebar.
+        openrouter_key (str): OpenRouter API Key from Sidebar.
+        domain_filter (str): Selected domain for Bio-Lock.
 
     Yields:
-        tuple: A tuple containing an empty string (for input clearing) and the 
-            updated history list.
+        tuple: Updated history, stats, reasoning, and logs.
     """
-    # 1. Prepare initial state
-    # history in Gradio 6.2.0 is a list of dicts: {"role": "user", "content": [...]}
+    # 1. Update Environment if keys provided (In production, use more secure ways)
+    import os
+    if zep_key:
+        os.environ["ZEP_API_KEY"] = zep_key
+    if openrouter_key:
+        os.environ["OPENAI_API_KEY"] = openrouter_key
+
+    # 2. Prepare initial state
     initial_state = {
         "messages": [HumanMessage(content=message)],
         "context": "",
@@ -32,61 +46,138 @@ async def chat_interaction(message, history):
         "thread_id": THREAD_ID
     }
     
-    # 2. Stream events from LangGraph
+    # 3. Stream events from LangGraph
     history.append({"role": "user", "content": [{"type": "text", "text": message}]})
-    yield "", history
+    yield history, "Updating...", "Retrieving...", gradio_handler.get_logs()
     
     ai_response_content = ""
     history.append({"role": "assistant", "content": [{"type": "text", "text": ""}]})
     
-    async for event in graph.astream(initial_state, config={"configurable": {"thread_id": THREAD_ID}}, stream_mode="values"):
+    # Use config for key/domain if orchestrator supports it, or inject into state
+    # For now, orchestrator uses env vars directly and checks content for domain
+    # We can pass domain as a 'secret' hint in message or update state
+    
+    # Strategy: Inject domain choice into the first message for the node to pick it up
+    if domain_filter == "Personal":
+        initial_state["messages"][0].content += " (Domain: personal)"
+
+    async for event in graph.astream(
+        initial_state, 
+        config={"configurable": {"thread_id": THREAD_ID}}, 
+        stream_mode="values"
+    ):
+        current_context = event.get("context", "No context retrieved yet.")
+        total_cost = event.get("total_cost", 0.0)
+        recursion = event.get("recursion_count", 0)
+        
+        stats_str = f"Cost: ${total_cost:.4f} | Dept: {recursion}"
+        
         if "messages" in event and event["messages"]:
             last_msg = event["messages"][-1]
             if isinstance(last_msg, AIMessage):
                 ai_response_content = last_msg.content
                 # Update the last history item
                 history[-1]["content"] = [{"type": "text", "text": ai_response_content}]
-                yield "", history
+                
+        yield history, stats_str, current_context, gradio_handler.get_logs()
 
-# Gradio 6.2.0 Theme and Layout
+# UI Theme Definition
 custom_theme = gr.themes.Soft(
     primary_hue="blue",
     secondary_hue="cyan",
     neutral_hue="slate",
     font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "sans-serif"],
-).set(
-    block_border_width="1px",
-    block_shadow="0 4px 6px -1px rgb(0 0 0 / 0.1)",
 )
 
-with gr.Blocks(theme=custom_theme, title="Personal Agent v1") as demo:
-    gr.Markdown("# 🧠 Personal Context-Aware Agent")
-    gr.Markdown("Persistent reasoning with LangGraph & Zep Memory")
-    
-    chatbot = gr.Chatbot(
-        label="Reasoning Chain",
-        type="messages", # Use the new messages format
-        show_label=False,
-        avatar_images=(None, "https://api.dicebear.com/7.x/bottts/svg?seed=Agent"),
-    )
-    
-    with gr.Row():
+with gr.Blocks(fill_height=True, title="Personal Agent v1") as demo:
+    with gr.Sidebar(label="Control Center", open=True):
+        gr.Markdown("### 🛠️ Settings")
+        zep_input = gr.Textbox(label="Zep API Key", type="password", placeholder="ZEP_...")
+        or_input = gr.Textbox(label="OpenRouter Key", type="password", placeholder="sk-or-...")
+        
+        gr.Markdown("### 🧠 Memory Control")
+        domain_drop = gr.Dropdown(
+            choices=["General", "Personal"], 
+            value="General", 
+            label="Bio-Lock Domain",
+            info="Apply privacy filters to memory retrieval."
+        )
+        
+        gr.Markdown("### 📊 Session Stats")
+        stats_box = gr.Markdown("Cost: $0.0000 | Depth: 0")
+        
+        gr.Markdown("---")
+        gr.Markdown("Session ID: `" + THREAD_ID[:8] + "`")
+
+    # Main Area
+    with gr.Column(scale=4):
+        gr.Markdown("# 🧠 Personal Context-Aware Agent")
+        
+        chatbot = gr.Chatbot(
+            label="Reasoning Chain",
+            show_label=False,
+            avatar_images=(None, "https://api.dicebear.com/7.x/bottts/svg?seed=Agent"),
+            height=500
+        )
+        
         msg = gr.Textbox(
             label="Message",
             placeholder="What would you like to research today?",
-            scale=4,
-            show_label=False,
-            container=False
+            container=False,
+            scale=1
         )
-        submit = gr.Button("Execute", variant="primary", scale=1)
-        stop = gr.Button("Stop", variant="stop", scale=1)
+        
+        with gr.Row():
+            submit = gr.Button("Execute", variant="primary")
+            stop = gr.Button("Stop", variant="stop")
+            clear = gr.Button("Clear History")
+
+    # Inspection Panels
+    with gr.Accordion("🔍 Detailed Reasoning & System Logs", open=False):
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("#### Retrieved Context")
+                context_display = gr.Textbox(
+                    placeholder="Context will appear here...",
+                    show_label=False,
+                    lines=10,
+                    max_lines=20,
+                    interactive=False
+                )
+            with gr.Column():
+                gr.Markdown("#### System Logs")
+                log_display = gr.Textbox(
+                    label="Live Logs",
+                    lines=10,
+                    max_lines=20,
+                    interactive=False
+                )
 
     # Event handlers
-    submit_event = msg.submit(chat_interaction, inputs=[msg, chatbot], outputs=[msg, chatbot])
-    click_event = submit.click(chat_interaction, inputs=[msg, chatbot], outputs=[msg, chatbot])
+    # Inputs: [msg, chatbot, zep_input, or_input, domain_drop]
+    # Outputs: [chatbot, stats_box, context_display, log_display]
     
-    # Non-blocking stop command
+    def clear_wrapper():
+        gradio_handler.clear()
+        return [], "Cost: $0.0000 | Depth: 0", "", ""
+
+    submit_event = msg.submit(
+        chat_interaction, 
+        inputs=[msg, chatbot, zep_input, or_input, domain_drop], 
+        outputs=[chatbot, stats_box, context_display, log_display]
+    )
+    # Clear on submit
+    msg.submit(lambda: "", outputs=msg, queue=False)
+
+    click_event = submit.click(
+        chat_interaction, 
+        inputs=[msg, chatbot, zep_input, or_input, domain_drop], 
+        outputs=[chatbot, stats_box, context_display, log_display]
+    )
+    submit.click(lambda: "", outputs=msg, queue=False)
+    
+    clear.click(clear_wrapper, outputs=[chatbot, stats_box, context_display, log_display])
     stop.click(fn=None, inputs=None, outputs=None, cancels=[submit_event, click_event])
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=custom_theme)

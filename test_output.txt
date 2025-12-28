@@ -1,0 +1,24 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.9, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\workspaces\personal-agent
+plugins: anyio-4.11.0, Faker-38.2.0, hypothesis-6.148.4, langsmith-0.5.1, logfire-4.16.0, asyncio-1.3.0, cov-7.0.0, mock-3.15.1
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+WARNING: ZepClient or API key missing. Running in mock mode.
+collected 4 items
+
+tests\test_memory_manager_production.py DEBUG calling _get_context_internal for thread_1
+DEBUG retry_async caught: 404 not found
+Non-transient error in _get_context_internal: 404 Not Found. Re-raising.
+DEBUG get_context caught fallback Exception: 404 not found
+Zep Retrieval Error: 404 Not Found
+DEBUG Permanent Error Context: Error retrieving context from Zep.
+.DEBUG calling _get_context_internal for thread_1
+DEBUG retry_async caught: 429 too many requests
+Transient error in _get_context_internal: 429 Too Many Requests. Retrying in 0.01s...
+DEBUG retry_async caught: 429 too many requests
+Transient error in _get_context_internal: 429 Too Many Requests. Retrying in 0.02s...
+DEBUG Happy Path Context: Success After Retry
+.Zep Connection Validation Failed: 401 Unauthorized
+..
+
+============================== 4 passed in 1.01s ==============================

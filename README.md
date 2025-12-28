@@ -7,7 +7,10 @@ A persistent, stateful AI agent designed for long-term context retention and loc
 - **Fractal Memory**: Continuous context retrieval via Zep Cloud V3 Thread concept.
 - **Economic Safety**: Integrated "Suicide Pact" node to prevent runaway API costs and recursion depth.
 - **Bio-Lock Filtering**: Domain-specific privacy filters for biographical context.
-- **Modern UI**: Real-time streaming chat interface powered by **Gradio 6.2.0**.
+- **Enhanced UI**: Professional Gradio 6.2.0 interface with:
+  - **Sidebar Controls**: API key management, Bio-Lock domain selector, real-time session statistics
+  - **Inspection Panels**: Expandable accordion for viewing retrieved context and system logs
+  - **Streaming Updates**: Live cost tracking and recursion depth monitoring
 - **Self-Healing Design**: Automated dependency auditing and documentation alignment.
 
 ## 🛠️ Architecture
@@ -37,10 +40,16 @@ The agent operates as a stateful graph:
 
 2. Configure environment variables (**REQUIRED** for reasoning):
 
+   **Option 1: Environment Variables**
+
    ```bash
    set ZEP_API_KEY=your_zep_key
    set OPENAI_API_KEY=your_openrouter_key
    ```
+
+   **Option 2: UI Sidebar** (after launching the app)
+   - Enter API keys directly in the sidebar settings panel
+   - Keys are injected into the environment at runtime
 
 ### Running the App
 
