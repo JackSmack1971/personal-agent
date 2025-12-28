@@ -89,149 +89,164 @@ custom_theme = gr.themes.Soft(
     font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "sans-serif"],
 )
 
-# Custom CSS for Cyber-Noir Aesthetics
+# Custom CSS for SaaS-Quality "Cockpit" Aesthetics
 css = """
-/* Global Dark Base */
+/* Global Foundation */
 .gradio-container {
-    background-color: #0a0b10 !important;
-    color: #e2e8f0 !important;
+    background-color: #111827 !important; /* Softer Dark Gray */
+    color: #f3f4f6 !important;
 }
 
-/* Sidebar: Dark Glassmorphism */
+/* Sidebar: Refined Glassmorphism */
 .sidebar {
-    background: rgba(15, 23, 42, 0.8) !important;
-    backdrop-filter: blur(12px);
-    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
-    box-shadow: 10px 0 15px -10px rgba(0, 0, 0, 0.5);
+    background: rgba(17, 24, 39, 0.8) !important;
+    backdrop-filter: blur(16px);
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 4px 0 24px -12px rgba(0, 0, 0, 0.8);
 }
 
-/* Vibrant Primary Button (Neon Blue) */
-.primary-btn {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    box-shadow: 0 0 15px rgba(37, 99, 235, 0.4) !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+/* Chatbot: Bubble Implementation */
+.chatbot {
+    border: none !important;
+    background: transparent !important;
+}
+.chatbot .message {
+    border-radius: 16px !important;
+    padding: 12px 16px !important;
+    max-width: 85% !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+.chatbot .message.user {
+    background: #3b82f6 !important; /* Vibrant Blue */
     color: white !important;
-    font-weight: 600 !important;
+    align-self: flex-end !important;
+    border-bottom-right-radius: 4px !important;
 }
-.primary-btn:hover {
-    box-shadow: 0 0 25px rgba(37, 99, 235, 0.6) !important;
-    transform: translateY(-2px);
-    filter: brightness(1.1);
+.chatbot .message.bot {
+    background: #1f2937 !important; /* Muted Gray */
+    color: #f3f4f6 !important;
+    align-self: flex-start !important;
+    border-bottom-left-radius: 4px !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Text & Headers Visibility */
-h1, h2, h3, h4, .markdown-text p, .markdown-text span {
-    color: #ffffff !important;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+/* Action Hierarchy Styling */
+.icon-btn {
+    min-width: 50px !important;
+    aspect-ratio: 1/1 !important;
+    background: #3b82f6 !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.ghost-btn {
+    background: transparent !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #9ca3af !important;
+    font-size: 0.85em !important;
+    transition: all 0.2s ease !important;
+}
+.ghost-btn:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    color: white !important;
+}
+
+/* Input Fields Refinement */
+input, textarea, select {
+    background-color: #1f2937 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
 }
 
 .stats-markdown {
     font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.95em !important;
-    color: #38bdf8 !important; /* Cyber Blue */
-    background: rgba(15, 23, 42, 0.5);
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid rgba(56, 189, 248, 0.2);
+    font-size: 0.85em !important;
+    color: #60a5fa !important;
+    background: rgba(31, 41, 55, 0.5);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border-left: 3px solid #3b82f6;
 }
 
-/* Chatbot Customization */
-.chatbot .message.user {
-    background-color: #1e293b !important;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.chatbot .message.bot {
-    background-color: #0f172a !important;
-    border: 1px solid rgba(37, 99, 235, 0.2);
-}
-
-/* Form Inputs */
-input, textarea, select {
-    background-color: #1e293b !important;
-    color: #ffffff !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-input:focus, textarea:focus {
-    border-color: #38bdf8 !important;
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.3) !important;
-}
-
-/* Accordion Styling */
+/* Accordion & Grouping */
 .accordion {
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    background: rgba(15, 23, 42, 0.4) !important;
+    border: none !important;
+    background: transparent !important;
 }
 """
 
-with gr.Blocks(fill_height=True, title="Personal Agent v1") as demo:
+with gr.Blocks(fill_height=True, title="Agent Nexus v1") as demo:
     with gr.Sidebar(label="Control Center", open=True, elem_classes=["sidebar"]):
-        gr.Markdown("### 🛠️ Settings")
-        zep_input = gr.Textbox(label="Zep API Key", type="password", placeholder="ZEP_...")
-        or_input = gr.Textbox(label="OpenRouter Key", type="password", placeholder="sk-or-...")
+        gr.Markdown("# 🛸 Nexus")
+        gr.Markdown("---")
+
+        with gr.Accordion("⚙️ Configuration", open=False):
+            zep_input = gr.Textbox(label="Zep API Key", type="password", placeholder="ZEP_...")
+            or_input = gr.Textbox(label="OpenRouter Key", type="password", placeholder="sk-or-...")
+            domain_drop = gr.Dropdown(
+                choices=["General", "Personal"], 
+                value="General", 
+                label="Bio-Lock Domain"
+            )
         
-        gr.Markdown("### 🧠 Memory Control")
-        domain_drop = gr.Dropdown(
-            choices=["General", "Personal"], 
-            value="General", 
-            label="Bio-Lock Domain",
-            info="Apply privacy filters to memory retrieval."
-        )
-        
-        gr.Markdown("### 📊 Session Stats")
+        gr.Markdown("### 📊 Live Metrics")
         stats_box = gr.Markdown("Cost: $0.0000 | Depth: 0", elem_classes=["stats-markdown"])
         
         gr.Markdown("---")
-        gr.Markdown("Session ID: `" + THREAD_ID[:8] + "`")
+        gr.Markdown("Thread: `" + THREAD_ID[:8] + "`")
 
-    # Main Area
-    with gr.Column(scale=4):
-        gr.Markdown("# 🧠 Personal Context-Aware Agent")
+    # The "Stage" (Main Canvas)
+    with gr.Column(scale=4, elem_id="canvas-area"):
+        gr.Markdown("## 🧠 Personal Context-Aware Agent")
         
         chatbot = gr.Chatbot(
-            label="Reasoning Chain",
             show_label=False,
             avatar_images=(None, "https://api.dicebear.com/7.x/bottts/svg?seed=Agent"),
-            height=500
+            height=600,
+            elem_id="main-chatbot"
         )
         
-        msg = gr.Textbox(
-            label="Message",
-            placeholder="What would you like to research today?",
-            container=False,
-            scale=1
-        )
-        
-        with gr.Row():
-            submit = gr.Button("Execute", variant="primary", elem_classes=["primary-btn"])
-            stop = gr.Button("Stop", variant="stop")
-            clear = gr.Button("Clear History")
+        # Action Bar (Cockpit Controls)
+        with gr.Group():
+            with gr.Row():
+                msg = gr.Textbox(
+                    placeholder="Type your objective...",
+                    container=False,
+                    scale=7,
+                    autofocus=True
+                )
+                submit = gr.Button("🚀", variant="primary", elem_classes=["icon-btn"], min_width=50, scale=0)
+            
+            with gr.Row():
+                stop = gr.Button("🛑 Stop", variant="secondary", elem_classes=["ghost-btn"], scale=1)
+                clear = gr.Button("🧹 Clear Session", elem_classes=["ghost-btn"], scale=1)
 
-    # Inspection Panels
-    with gr.Accordion("🔍 Detailed Reasoning & System Logs", open=False):
+    # Inspection Panels (Drawer)
+    with gr.Accordion("🔍 Forensic Inspection", open=False):
         with gr.Row():
             with gr.Column():
-                gr.Markdown("#### Retrieved Context")
+                gr.Markdown("#### Context Context")
                 context_display = gr.Textbox(
-                    placeholder="Context will appear here...",
+                    placeholder="Memory will reveal here...",
                     show_label=False,
-                    lines=10,
-                    max_lines=20,
+                    lines=8,
+                    max_lines=15,
                     interactive=False
                 )
             with gr.Column():
-                gr.Markdown("#### System Logs")
+                gr.Markdown("#### Logs")
                 log_display = gr.Textbox(
-                    label="Live Logs",
-                    lines=10,
-                    max_lines=20,
+                    show_label=False,
+                    lines=8,
+                    max_lines=15,
                     interactive=False
                 )
 
-    # Event handlers
-    # Inputs: [msg, chatbot, zep_input, or_input, domain_drop]
-    # Outputs: [chatbot, stats_box, context_display, log_display]
-    
+    # Logic Integration
     def clear_wrapper():
         gradio_handler.clear()
         return [], "Cost: $0.0000 | Depth: 0", "", ""
@@ -241,7 +256,6 @@ with gr.Blocks(fill_height=True, title="Personal Agent v1") as demo:
         inputs=[msg, chatbot, zep_input, or_input, domain_drop], 
         outputs=[chatbot, stats_box, context_display, log_display]
     )
-    # Clear on submit
     msg.submit(lambda: "", outputs=msg, queue=False)
 
     click_event = submit.click(
