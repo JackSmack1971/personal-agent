@@ -1,0 +1,9 @@
+gradio==6.2.0
+langgraph==1.0.5
+langchain-core==1.2.5
+langchain-openai==1.1.6
+python-dotenv
+msgpack
+pydantic
+zep-cloud==3.13.0
+aiohttp==3.13.2
