@@ -89,58 +89,78 @@ custom_theme = gr.themes.Soft(
     font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "sans-serif"],
 )
 
-# Custom CSS for Rich Aesthetics
+# Custom CSS for Cyber-Noir Aesthetics
 css = """
-/* Glassmorphism Sidebar */
-.sidebar {
-    background: rgba(255, 255, 255, 0.7) !important;
-    backdrop-filter: blur(10px);
-    border-right: 1px solid rgba(255, 255, 255, 0.3) !important;
+/* Global Dark Base */
+.gradio-container {
+    background-color: #0a0b10 !important;
+    color: #e2e8f0 !important;
 }
 
-/* Vibrant Primary Button */
+/* Sidebar: Dark Glassmorphism */
+.sidebar {
+    background: rgba(15, 23, 42, 0.8) !important;
+    backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 10px 0 15px -10px rgba(0, 0, 0, 0.5);
+}
+
+/* Vibrant Primary Button (Neon Blue) */
 .primary-btn {
-    background: hsl(210, 100%, 56%) !important;
-    border: none !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 0 15px rgba(37, 99, 235, 0.4) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    color: white !important;
+    font-weight: 600 !important;
 }
 .primary-btn:hover {
-    background: hsl(210, 100%, 65%) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 0 25px rgba(37, 99, 235, 0.6) !important;
+    transform: translateY(-2px);
+    filter: brightness(1.1);
 }
 
-/* Premium Component Styling */
-.gradio-container {
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
-}
-
-.padded-card {
-    background: white !important;
-    border-radius: 12px !important;
-    border: 1px solid rgba(0, 0, 0, 0.05) !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
-}
-
-/* Typography Refinement */
-h1, h2, h3 {
-    letter-spacing: -0.025em !important;
+/* Text & Headers Visibility */
+h1, h2, h3, h4, .markdown-text p, .markdown-text span {
+    color: #ffffff !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .stats-markdown {
     font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.9em !important;
-    color: #64748b !important;
+    font-size: 0.95em !important;
+    color: #38bdf8 !important; /* Cyber Blue */
+    background: rgba(15, 23, 42, 0.5);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(56, 189, 248, 0.2);
 }
 
-/* Micro-animations for textboxes */
-input, textarea {
-    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+/* Chatbot Customization */
+.chatbot .message.user {
+    background-color: #1e293b !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.chatbot .message.bot {
+    background-color: #0f172a !important;
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+/* Form Inputs */
+input, textarea, select {
+    background-color: #1e293b !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 input:focus, textarea:focus {
-    border-color: hsl(210, 100%, 56%) !important;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+    border-color: #38bdf8 !important;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.3) !important;
+}
+
+/* Accordion Styling */
+.accordion {
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    background: rgba(15, 23, 42, 0.4) !important;
 }
 """
 
