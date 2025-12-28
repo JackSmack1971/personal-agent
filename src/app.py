@@ -2,9 +2,11 @@ import gradio as gr
 import asyncio
 import uuid
 import logging
+import json
 from src.orchestrator import app as graph
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from src.utils.logger import gradio_handler, setup_logging
+from src.memory_manager import memory_manager
 
 # Initialize logging
 setup_logging()
@@ -12,31 +14,23 @@ logger = logging.getLogger(__name__)
 
 # Custom User ID / Thread ID for persistence
 THREAD_ID = str(uuid.uuid4())
+USER_DAILY_BUDGET = 1.00  # USD
 
 async def chat_interaction(message, history, zep_key, openrouter_key, domain_filter):
-    """Async handler for the Gradio chat interface with enhanced inputs.
+    """Async handler for the Gradio chat interface with detailed telemetry.
 
-    Coordinates message processing via the LangGraph orchestrator, 
-    injecting settings from the UI sidebar.
-
-    Args:
-        message (str): The user's input message.
-        history (List[dict]): The conversation history.
-        zep_key (str): Zep API Key from Sidebar.
-        openrouter_key (str): OpenRouter API Key from Sidebar.
-        domain_filter (str): Selected domain for Bio-Lock.
-
-    Yields:
-        tuple: Updated history, stats, reasoning, and logs.
+    Uses astream_events to provide real-time updates on internal graph status.
     """
-    # 1. Update Environment if keys provided (In production, use more secure ways)
     import os
-    if zep_key:
-        os.environ["ZEP_API_KEY"] = zep_key
-    if openrouter_key:
-        os.environ["OPENAI_API_KEY"] = openrouter_key
+    if zep_key: os.environ["ZEP_API_KEY"] = zep_key
+    if openrouter_key: os.environ["OPENAI_API_KEY"] = openrouter_key
 
-    # 2. Prepare initial state
+    # Client-side validation
+    if not message.strip():
+        yield history, "IDLE", 0, 0, "", gradio_handler.get_logs()
+        return
+
+    # Initialize State
     initial_state = {
         "messages": [HumanMessage(content=message)],
         "context": "",
@@ -46,198 +40,190 @@ async def chat_interaction(message, history, zep_key, openrouter_key, domain_fil
         "thread_id": THREAD_ID
     }
     
-    # 3. Stream events from LangGraph
-    history.append({"role": "user", "content": [{"type": "text", "text": message}]})
-    yield history, "Updating...", "Retrieving...", gradio_handler.get_logs()
-    
-    ai_response_content = ""
-    history.append({"role": "assistant", "content": [{"type": "text", "text": ""}]})
-    
-    # Use config for key/domain if orchestrator supports it, or inject into state
-    # For now, orchestrator uses env vars directly and checks content for domain
-    # We can pass domain as a 'secret' hint in message or update state
-    
-    # Strategy: Inject domain choice into the first message for the node to pick it up
     if domain_filter == "Personal":
         initial_state["messages"][0].content += " (Domain: personal)"
 
-    async for event in graph.astream(
+    # Updated history format for Gradio 6 Messages
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": ""})
+    
+    current_status = "IDLE"
+    cost = 0.0
+    recursion = 0
+    context_text = ""
+    ai_content = ""
+
+    # Stream Events
+    async for event in graph.astream_events(
         initial_state, 
-        config={"configurable": {"thread_id": THREAD_ID}}, 
-        stream_mode="values"
+        version="v1",
+        config={"configurable": {"thread_id": THREAD_ID}}
     ):
-        current_context = event.get("context", "No context retrieved yet.")
-        total_cost = event.get("total_cost", 0.0)
-        recursion = event.get("recursion_count", 0)
+        kind = event["event"]
         
-        stats_str = f"Cost: ${total_cost:.4f} | Dept: {recursion}"
-        
-        if "messages" in event and event["messages"]:
-            last_msg = event["messages"][-1]
-            if isinstance(last_msg, AIMessage):
-                ai_response_content = last_msg.content
-                # Update the last history item
-                history[-1]["content"] = [{"type": "text", "text": ai_response_content}]
-                
-        yield history, stats_str, current_context, gradio_handler.get_logs()
+        if kind == "on_chain_start":
+            current_status = "EXECUTING_GRAPH"
+        elif kind == "on_node_start":
+            node_name = event["name"]
+            current_status = f"NODE: {node_name.upper()}"
+        elif kind == "on_node_end":
+            output = event["data"].get("output", {})
+            cost = output.get("total_cost", cost)
+            recursion = output.get("recursion_count", recursion)
+            context_text = output.get("context", context_text)
+        elif kind == "on_chat_model_stream":
+            content = event["data"]["chunk"].content
+            if content:
+                ai_content += content
+                history[-1]["content"] = ai_content
+        elif kind == "on_chain_end":
+            current_status = "IDLE"
 
-# UI Theme Definition: Native Gradio v6 Styling
-custom_theme = gr.themes.Soft(
-    primary_hue="blue",
-    secondary_hue="slate",
+        # Update Telemetry Sensors
+        graph_stats = await memory_manager.get_graph_stats()
+        mem_health = f"{graph_stats['active_facts']} ACTIVE | {graph_stats['expired_facts']} EXPIRED"
+        
+        # Yield updated UI state
+        yield (
+            history, 
+            current_status, 
+            cost, 
+            recursion, 
+            context_text, 
+            gradio_handler.get_logs(),
+            mem_health
+        )
+
+# Bloomberg "Terminal Black" Theme
+bloomberg_theme = gr.themes.Default(
+    primary_hue="amber",
     neutral_hue="slate",
-    font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "sans-serif"],
+    font=["JetBrains Mono", "Roboto Mono", "monospace"]
 ).set(
-    # Global Backgrounds
-    body_background_fill="#111827",
-    body_text_color="#f3f4f6",
-    block_background_fill="#1f2937",
-    block_label_text_color="#9ca3af",
+    # Core Colors
+    body_background_fill="#000000",
+    block_background_fill="#000000",
+    block_border_width="1px",
+    block_border_color="#333333",
     
-    # Input Backgrounds
-    input_background_fill="#374151",
-    input_border_color="rgba(255, 255, 255, 0.1)",
-
-    # Button Colors
-    button_primary_background_fill="#3b82f6",
-    button_primary_text_color="white",
+    # Text Primary (Amber)
+    body_text_color="#FFB100",
+    block_label_text_color="#FFB100",
     
-    # Chat specific overrides (if supported by theme variables)
-    background_fill_secondary="#111827",
-    border_color_primary="rgba(255, 255, 255, 0.05)",
+    # Interactive Elements
+    input_background_fill="#000000",
+    input_border_color="#444444",
+    button_primary_background_fill="#FFB100",
+    button_primary_text_color="#000000",
 )
 
-# Minimal CSS for branding and glassmorphism (where native variables are insufficient)
 css = """
-.sidebar-glass {
-    background: rgba(17, 24, 39, 0.7) !important;
-    backdrop-filter: blur(16px);
-    border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+.terminal-border { border: 1px solid #333333 !important; }
+.status-green { color: #00FF00 !important; }
+.amber-text { color: #FFB100 !important; }
+
+/* Bloomberg Chatbot Styling */
+#main-chatbot { background-color: #000000 !important; border: 1px solid #333333 !important; }
+.chatbot .message.user { 
+    background-color: #111111 !important; 
+    border: 1px solid #FFB100 !important; 
+    color: #FFB100 !important;
+    border-radius: 0 !important;
+}
+.chatbot .message.bot { 
+    background-color: #000000 !important; 
+    border: 1px solid #00FF00 !important; 
+    color: #00FF00 !important;
+    border-radius: 0 !important;
 }
 
-.stats-card {
-    border-left: 4px solid #3b82f6;
-    background: rgba(255, 255, 255, 0.03);
-    padding: 12px;
-    border-radius: 8px;
-}
-
-/* Fix for Chatbot background and bubble styling in v6 */
-#main-chatbot {
-    background-color: #111827 !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-}
-
-/* Force dark theme for Gradio prose/markdown items in chat */
-.prose {
-    color: #f3f4f6 !important;
-}
-
-/* Chat bubble overrides */
-.chatbot .message.user {
-    background-color: #2563eb !important;
-    color: white !important;
-}
-.chatbot .message.bot {
-    background-color: #1f2937 !important;
-    color: #f3f4f6 !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-/* Layout stabilization for Integrated Submit Button */
-.integrated-submit-fix .gr-button {
-    height: 42px !important;
-    align-self: flex-end !important;
-    margin-bottom: 2px !important;
+/* Recursion Gauge Placeholder Styling */
+.gauge-container { 
+    text-align: center; 
+    padding: 10px; 
+    border: 1px solid #333333; 
+    background: #0a0a0a;
 }
 """
 
-with gr.Blocks(fill_height=True, title="Nexus Agent v1") as demo:
-    with gr.Sidebar(label="Navigation", open=True, elem_classes=["sidebar-glass"]):
-        gr.Markdown("# 🛸 Nexus")
-        gr.Markdown("---")
-
-        with gr.Accordion("⚙️ Configuration", open=False):
-            zep_input = gr.Textbox(label="Zep API Key", type="password", placeholder="ZEP_...")
-            or_input = gr.Textbox(label="OpenRouter Key", type="password", placeholder="sk-or-...")
-            domain_drop = gr.Dropdown(
-                choices=["General", "Personal"], 
-                value="General", 
-                label="Bio-Lock Domain"
-            )
-        
-        gr.Markdown("### 📊 Live Metrics")
-        with gr.Group(elem_classes=["stats-card"]):
-            stats_box = gr.Markdown("Cost: $0.0000 | Depth: 0")
+with gr.Blocks(title="BLOOMBERG_AGENT_v1.0") as demo:
+    with gr.Sidebar(label="CONTEXT_MONITOR", open=True):
+        gr.Markdown("### 📡 MEMORY_HEALTH")
+        mem_health_display = gr.Markdown("0 ACTIVE | 0 EXPIRED", elem_classes=["status-green"])
         
         gr.Markdown("---")
-        gr.Markdown("Thread: `" + THREAD_ID[:8] + "`")
+        gr.Markdown("### 🛠️ OPERATIONS")
+        mode_personal = gr.Button("PERSONAL_MODE", variant="secondary", size="sm")
+        mode_tech = gr.Button("TECHNICAL_MODE", variant="secondary", size="sm")
+        hybrid_search = gr.Checkbox(label="HYBRID_SEARCH", value=True)
+        
+        gr.Markdown("---")
+        with gr.Accordion("CONFIG_CMD", open=False):
+            zep_input = gr.Textbox(label="ZEP_KEY", type="password")
+            or_input = gr.Textbox(label="OR_KEY", type="password")
+            domain_drop = gr.Dropdown(choices=["General", "Personal"], value="General", label="BIO_LOCK")
 
-    # Main Canvas
-    with gr.Column(scale=4):
-        gr.Markdown("## 🧠 Personal Context-Aware Agent")
-        
-        chatbot = gr.Chatbot(
-            value=[], # Prevent "Error" state on load
-            show_label=False,
-            avatar_images=(None, "https://api.dicebear.com/7.x/bottts/svg?seed=Agent"),
-            height=620,
-            elem_id="main-chatbot"
-        )
-        
-        # Action Bar: Native Textbox Integration
-        with gr.Group(elem_classes=["integrated-submit-fix"]):
-            msg = gr.Textbox(
-                placeholder="Declare your objective...",
-                container=False,
-                scale=7,
-                autofocus=True,
+    with gr.Row():
+        with gr.Column(scale=3):
+            gr.Markdown("## ⚡ COMMAND_AND_CONTROL")
+            chatbot = gr.Chatbot(
                 show_label=False,
-                value="", # Prevent Error state
-                buttons=["submit"] # Native v6 Integrated Button
+                height=700,
+                elem_id="main-chatbot"
             )
             
-            with gr.Row():
-                stop = gr.Button("🛑 Stop", variant="secondary", size="sm")
-                clear = gr.Button("🧹 Reset", variant="secondary", size="sm")
+            with gr.Group():
+                msg = gr.Textbox(
+                    placeholder="ENTER_COMMAND_...",
+                    container=False,
+                    scale=7,
+                    autofocus=True,
+                    show_label=False,
+                    buttons=["submit"]
+                )
+        
+        # Right Sidebar: Economic Guardrails
+        with gr.Column(scale=1, elem_classes=["terminal-border"]):
+            gr.Markdown("### ⚖️ ECONOMIC_GUARDRAILS")
+            
+            status_box = gr.Textbox(label="TELEMETRY_STATUS", value="IDLE", interactive=False, elem_classes=["status-green"])
+            
+            gr.Markdown("**SESSION_COST_EXPOSURE**")
+            cost_bar = gr.Number(label="USD_SPENT", value=0.0, precision=4)
+            cost_progress = gr.Slider(label="BUDGET_UTILIZATION (%)", minimum=0, maximum=100, interactive=False)
+            
+            gr.Markdown("**RECURSION_DEPTH_GAUGE**")
+            recursion_count = gr.Number(label="CURRENT_STEPS", value=0)
+            
+            gr.HTML(f"""
+                <div class='gauge-container'>
+                    <div class='amber-text' style='font-size: 0.8em;'>LIMIT: 50</div>
+                </div>
+            """)
 
-    # Forensic Inspection
-    with gr.Accordion("🔍 Forensic Inspection", open=False):
+    # Forensic Inspection Drawer
+    with gr.Accordion("📋 FORENSIC_LOGS", open=False):
         with gr.Row():
-            with gr.Column():
-                gr.Markdown("#### Context Engine")
-                context_display = gr.Textbox(
-                    value="", # Prevent Error state
-                    placeholder="Memory nodes will appear here...",
-                    show_label=False,
-                    lines=8,
-                    max_lines=15,
-                    interactive=False
-                )
-            with gr.Column():
-                gr.Markdown("#### Process Logs")
-                log_display = gr.Textbox(
-                    value="", # Prevent Error state
-                    show_label=False,
-                    lines=8,
-                    max_lines=15,
-                    interactive=False
-                )
+            context_display = gr.Textbox(label="RAW_CONTEXT", lines=5, interactive=False)
+            log_display = gr.Textbox(label="SYSTEM_TELEMETRY", lines=5, interactive=False)
 
-    # Logic Integration
-    def clear_wrapper():
+    # Event Handlers
+    def update_budget_slider(cost):
+        return (cost / USER_DAILY_BUDGET) * 100
+
+    def clear_session():
         gradio_handler.clear()
-        return [], "Cost: $0.0000 | Depth: 0", "", ""
+        return [], 0, 0, 0, "", "", "0 ACTIVE | 0 EXPIRED"
 
+    # Integration Logic
     submit_event = msg.submit(
-        chat_interaction, 
-        inputs=[msg, chatbot, zep_input, or_input, domain_drop], 
-        outputs=[chatbot, stats_box, context_display, log_display]
+        chat_interaction,
+        inputs=[msg, chatbot, zep_input, or_input, domain_drop],
+        outputs=[chatbot, status_box, cost_bar, recursion_count, context_display, log_display, mem_health_display]
     )
     msg.submit(lambda: "", outputs=msg, queue=False)
     
-    clear.click(clear_wrapper, outputs=[chatbot, stats_box, context_display, log_display])
-    stop.click(fn=None, inputs=None, outputs=None, cancels=[submit_event])
+    cost_bar.change(update_budget_slider, inputs=[cost_bar], outputs=[cost_progress])
 
 if __name__ == "__main__":
-    demo.launch(theme=custom_theme, css=css)
+    demo.launch(theme=bloomberg_theme, css=css)

@@ -1,14 +1,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.coverage
-htmlcov/
 .venv/
 env/
 venv/
 ENV/
 .env
-.ipynb_checkpoints
-documentation_artifacts/
-C:\Users\click\.gemini\antigravity\brain\
+.pytest_cache/
+.gradio/
+*.log

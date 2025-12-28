@@ -48,14 +48,12 @@ class TestUIIntegration(unittest.IsolatedAsyncioTestCase):
                 
                 from src.app import chat_interaction
                 
-                # Mock the graph.astream to return a simple event
+                # Mock the graph.astream_events to return a simple event
                 mock_event = {
-                    "messages": [AIMessage(content="Test response")],
-                    "context": "Test context",
-                    "total_cost": 0.01,
-                    "recursion_count": 1
+                    "event": "on_chain_end",
+                    "data": {"output": {"total_cost": 0.01, "recursion_count": 1, "context": "Test"}}
                 }
-                mock_graph.astream.return_value.__aiter__.return_value = [mock_event]
+                mock_graph.astream_events.return_value.__aiter__.return_value = [mock_event]
                 
                 # Call chat_interaction with UI parameters
                 message = "Hello"
@@ -95,30 +93,28 @@ class TestUIIntegration(unittest.IsolatedAsyncioTestCase):
                 from src.app import chat_interaction
                 
                 mock_event = {
-                    "messages": [AIMessage(content="Response")],
-                    "context": "Context",
-                    "total_cost": 0.0,
-                    "recursion_count": 0
+                    "event": "on_chain_end",
+                    "data": {"output": {}}
                 }
-                mock_graph.astream.return_value.__aiter__.return_value = [mock_event]
+                mock_graph.astream_events.return_value.__aiter__.return_value = [mock_event]
                 
                 # Test with Personal domain
                 results = []
                 async for result in chat_interaction("Test message", [], "", "", "Personal"):
                     results.append(result)
                 
-                # Verify graph.astream was called
-                self.assertTrue(mock_graph.astream.called)
+                # Verify graph.astream_events was called
+                self.assertTrue(mock_graph.astream_events.called)
                 
                 # Get the initial_state argument
-                call_args = mock_graph.astream.call_args
+                call_args = mock_graph.astream_events.call_args
                 initial_state = call_args[0][0]
                 
                 # Verify domain hint was injected
                 self.assertIn("(Domain: personal)", initial_state["messages"][0].content)
 
     async def test_chat_interaction_yields_correct_outputs(self):
-        """Verify that chat_interaction yields the correct tuple format."""
+        """Verify that chat_interaction yields the 7-tuple format for Bloomberg UI."""
         with patch.dict('sys.modules', {'gradio': self.mock_gradio}), \
              patch('src.orchestrator.app') as mock_graph, \
              patch('os.environ', {}):
@@ -129,41 +125,56 @@ class TestUIIntegration(unittest.IsolatedAsyncioTestCase):
             with patch('src.utils.logger.gradio_handler', mock_handler), \
                  patch('src.utils.logger.setup_logging'):
                 
-                import importlib
-                if 'src.app' in sys.modules:
-                    importlib.reload(sys.modules['src.app'])
-                else:
-                    import src.app
+                # Mock memory_manager graph stats
+                with patch('src.memory_manager.memory_manager.get_graph_stats', AsyncMock(return_value={"active_facts": 10, "expired_facts": 2})):
+                    import importlib
+                    if 'src.app' in sys.modules:
+                        importlib.reload(sys.modules['src.app'])
+                    else:
+                        import src.app
+                        
+                    from src.app import chat_interaction
                     
-                from src.app import chat_interaction
-                
-                mock_event = {
-                    "messages": [AIMessage(content="AI Response")],
-                    "context": "Retrieved context",
-                    "total_cost": 0.05,
-                    "recursion_count": 2
-                }
-                mock_graph.astream.return_value.__aiter__.return_value = [mock_event]
-                
-                results = []
-                async for result in chat_interaction("Hello", [], "", "", "General"):
-                    results.append(result)
-                
-                # Verify we got results
-                self.assertGreater(len(results), 0)
-                
-                # Check the structure of the last result
-                last_result = results[-1]
-                self.assertEqual(len(last_result), 4)  # (history, stats, context, logs)
-                
-                history, stats, context, logs = last_result
-                
-                # Verify types and content
-                self.assertIsInstance(history, list)
-                self.assertIn("Cost:", stats)
-                self.assertIn("Dept:", stats)
-                self.assertEqual(context, "Retrieved context")
-                self.assertEqual(logs, "System log output")
+                    mock_events = [
+                        {
+                            "event": "on_node_start",
+                            "name": "reasoning"
+                        },
+                        {
+                            "event": "on_node_end",
+                            "name": "reasoning",
+                            "data": {
+                                "output": {
+                                    "total_cost": 0.05,
+                                    "recursion_count": 2,
+                                    "context": "Retrieved context"
+                                }
+                            }
+                        }
+                    ]
+                    mock_graph.astream_events.return_value.__aiter__.return_value = mock_events
+                    
+                    results = []
+                    async for result in chat_interaction("Hello", [], "", "", "General"):
+                        results.append(result)
+                    
+                    # Verify we got results
+                    self.assertGreater(len(results), 0)
+                    
+                    # Check the structure of the last result (7-tuple)
+                    last_result = results[-1]
+                    self.assertEqual(len(last_result), 7)  
+                    
+                    history, status, cost, recursion, context, logs, mem_health = last_result
+                    
+                    # Verify types and content
+                    self.assertIsInstance(history, list)
+                    self.assertEqual(status, "NODE: REASONING")
+                    self.assertEqual(cost, 0.05)
+                    self.assertEqual(recursion, 2)
+                    self.assertEqual(context, "Retrieved context")
+                    self.assertEqual(logs, "System log output")
+                    self.assertEqual(mem_health, "10 ACTIVE | 2 EXPIRED")
 
 if __name__ == '__main__':
     unittest.main()
