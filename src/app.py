@@ -89,8 +89,63 @@ custom_theme = gr.themes.Soft(
     font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "sans-serif"],
 )
 
+# Custom CSS for Rich Aesthetics
+css = """
+/* Glassmorphism Sidebar */
+.sidebar {
+    background: rgba(255, 255, 255, 0.7) !important;
+    backdrop-filter: blur(10px);
+    border-right: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Vibrant Primary Button */
+.primary-btn {
+    background: hsl(210, 100%, 56%) !important;
+    border: none !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+.primary-btn:hover {
+    background: hsl(210, 100%, 65%) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Premium Component Styling */
+.gradio-container {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+}
+
+.padded-card {
+    background: white !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Typography Refinement */
+h1, h2, h3 {
+    letter-spacing: -0.025em !important;
+}
+
+.stats-markdown {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 0.9em !important;
+    color: #64748b !important;
+}
+
+/* Micro-animations for textboxes */
+input, textarea {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+input:focus, textarea:focus {
+    border-color: hsl(210, 100%, 56%) !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+}
+"""
+
 with gr.Blocks(fill_height=True, title="Personal Agent v1") as demo:
-    with gr.Sidebar(label="Control Center", open=True):
+    with gr.Sidebar(label="Control Center", open=True, elem_classes=["sidebar"]):
         gr.Markdown("### 🛠️ Settings")
         zep_input = gr.Textbox(label="Zep API Key", type="password", placeholder="ZEP_...")
         or_input = gr.Textbox(label="OpenRouter Key", type="password", placeholder="sk-or-...")
@@ -104,7 +159,7 @@ with gr.Blocks(fill_height=True, title="Personal Agent v1") as demo:
         )
         
         gr.Markdown("### 📊 Session Stats")
-        stats_box = gr.Markdown("Cost: $0.0000 | Depth: 0")
+        stats_box = gr.Markdown("Cost: $0.0000 | Depth: 0", elem_classes=["stats-markdown"])
         
         gr.Markdown("---")
         gr.Markdown("Session ID: `" + THREAD_ID[:8] + "`")
@@ -128,7 +183,7 @@ with gr.Blocks(fill_height=True, title="Personal Agent v1") as demo:
         )
         
         with gr.Row():
-            submit = gr.Button("Execute", variant="primary")
+            submit = gr.Button("Execute", variant="primary", elem_classes=["primary-btn"])
             stop = gr.Button("Stop", variant="stop")
             clear = gr.Button("Clear History")
 
@@ -180,4 +235,4 @@ with gr.Blocks(fill_height=True, title="Personal Agent v1") as demo:
     stop.click(fn=None, inputs=None, outputs=None, cancels=[submit_event, click_event])
 
 if __name__ == "__main__":
-    demo.launch(theme=custom_theme)
+    demo.launch(theme=custom_theme, css=css)
