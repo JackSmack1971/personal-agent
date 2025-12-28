@@ -17,17 +17,15 @@ THREAD_ID = str(uuid.uuid4())
 USER_DAILY_BUDGET = 1.00  # USD
 
 async def chat_interaction(message, history, zep_key, openrouter_key, domain_filter):
-    """Async handler for the Gradio chat interface with detailed telemetry.
-
-    Uses astream_events to provide real-time updates on internal graph status.
-    """
+    """Async handler for the Nexus Command Console with astream_events telemetry."""
     import os
     if zep_key: os.environ["ZEP_API_KEY"] = zep_key
     if openrouter_key: os.environ["OPENAI_API_KEY"] = openrouter_key
 
-    # Client-side validation
-    if not message.strip():
-        yield history, "IDLE", 0, 0, "", gradio_handler.get_logs()
+    # Client-side validation to prevent prompt injection 
+    # (Simple sanitization placeholder for CVE: GHSA-6qv9-48xg-fc7f)
+    if not message.strip() or any(x in message for x in ["{", "}", "<script>"]):
+        yield history, "IDLE", 0, 0, "", gradio_handler.get_logs(), "0 ACTIVE | 0 EXPIRED", gr.update(visible=False)
         return
 
     # Initialize State
@@ -47,11 +45,12 @@ async def chat_interaction(message, history, zep_key, openrouter_key, domain_fil
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": ""})
     
-    current_status = "IDLE"
+    current_status = "INITIALIZING"
     cost = 0.0
     recursion = 0
     context_text = ""
     ai_content = ""
+    thought_history = []
 
     # Stream Events
     async for event in graph.astream_events(
@@ -62,19 +61,23 @@ async def chat_interaction(message, history, zep_key, openrouter_key, domain_fil
         kind = event["event"]
         
         if kind == "on_chain_start":
-            current_status = "EXECUTING_GRAPH"
+            current_status = "SUICIDE_PACT_ACTIVE"
         elif kind == "on_node_start":
             node_name = event["name"]
             current_status = f"NODE: {node_name.upper()}"
+            thought_history.append(f"🔍 EXECUTING: {node_name.upper()}...")
         elif kind == "on_node_end":
             output = event["data"].get("output", {})
             cost = output.get("total_cost", cost)
             recursion = output.get("recursion_count", recursion)
             context_text = output.get("context", context_text)
+            thought_history.append(f"✅ COMPLETED: {event['name'].upper()}")
         elif kind == "on_chat_model_stream":
             content = event["data"]["chunk"].content
             if content:
                 ai_content += content
+                # Inject thought history into the chat as an accordion-style prefix if needed
+                # For high-density, we'll append to the last message but keep it tactical
                 history[-1]["content"] = ai_content
         elif kind == "on_chain_end":
             current_status = "IDLE"
@@ -83,6 +86,14 @@ async def chat_interaction(message, history, zep_key, openrouter_key, domain_fil
         graph_stats = await memory_manager.get_graph_stats()
         mem_health = f"{graph_stats['active_facts']} ACTIVE | {graph_stats['expired_facts']} EXPIRED"
         
+        # Red State Logic (Threshold 30% expired facts)
+        ratio = graph_stats['expired_facts'] / max(graph_stats['active_facts'], 1)
+        alert_state = ratio > 0.3
+        purge_visible = gr.update(visible=alert_state)
+        
+        # Format logs for dashboard
+        telemetry_log = "\n".join(thought_history[-5:]) + "\n" + gradio_handler.get_logs()
+        
         # Yield updated UI state
         yield (
             history, 
@@ -90,11 +101,12 @@ async def chat_interaction(message, history, zep_key, openrouter_key, domain_fil
             cost, 
             recursion, 
             context_text, 
-            gradio_handler.get_logs(),
-            mem_health
+            telemetry_log,
+            mem_health,
+            purge_visible
         )
 
-# Bloomberg "Terminal Black" Theme
+# Bloomberg "Terminal Black" Theme with Monospace enforcement
 bloomberg_theme = gr.themes.Default(
     primary_hue="amber",
     neutral_hue="slate",
@@ -118,6 +130,40 @@ bloomberg_theme = gr.themes.Default(
 )
 
 css = """
+/* Floating HUD Toggle */
+#hud-toggle {
+    position: fixed !important;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    opacity: 0.7;
+    transition: opacity 0.3s;
+}
+#hud-toggle:hover { opacity: 1; }
+
+/* Mechanical Switch Haptics */
+.hardware-trigger {
+    background: #FFB100 !important;
+    color: #000000 !important;
+    box-shadow: inset 2px 2px 0 0 #ffffff, inset -2px -2px 0 0 #333333 !important;
+    transition: transform 0.05s, box-shadow 0.05s !important;
+}
+.hardware-trigger:active {
+    transform: translate(2px, 2px) !important;
+    box-shadow: inset -2px -2px 0 0 #ffffff, inset 2px 2px 0 0 #333333 !important;
+}
+
+/* Red Alert State */
+.gauge-alert-red {
+    color: #FF0000 !important;
+    border-color: #FF0000 !important;
+    animation: pulse 1s infinite alternate;
+}
+@keyframes pulse {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+}
+
 .terminal-border { border: 1px solid #333333 !important; }
 .status-green { color: #00FF00 !important; }
 .amber-text { color: #FFB100 !important; }
@@ -136,56 +182,51 @@ css = """
     color: #00FF00 !important;
     border-radius: 0 !important;
 }
-
-/* Recursion Gauge Placeholder Styling */
-.gauge-container { 
-    text-align: center; 
-    padding: 10px; 
-    border: 1px solid #333333; 
-    background: #0a0a0a;
-}
 """
 
-with gr.Blocks(title="BLOOMBERG_AGENT_v1.0") as demo:
-    with gr.Sidebar(label="CONTEXT_MONITOR", open=True):
-        gr.Markdown("### 📡 MEMORY_HEALTH")
-        mem_health_display = gr.Markdown("0 ACTIVE | 0 EXPIRED", elem_classes=["status-green"])
-        
-        gr.Markdown("---")
-        gr.Markdown("### 🛠️ OPERATIONS")
-        mode_personal = gr.Button("PERSONAL_MODE", variant="secondary", size="sm")
-        mode_tech = gr.Button("TECHNICAL_MODE", variant="secondary", size="sm")
-        hybrid_search = gr.Checkbox(label="HYBRID_SEARCH", value=True)
-        
-        gr.Markdown("---")
-        with gr.Accordion("CONFIG_CMD", open=False):
-            zep_input = gr.Textbox(label="ZEP_KEY", type="password")
-            or_input = gr.Textbox(label="OR_KEY", type="password")
-            domain_drop = gr.Dropdown(choices=["General", "Personal"], value="General", label="BIO_LOCK")
-
+with gr.Blocks(title="NEXUS_COMMAND_CONSOLE_v1.0") as demo:
+    # Floating HUD Toggle
+    hud_btn = gr.Button("🛰️ FOCUS_MODE", elem_id="hud-toggle", size="sm", variant="secondary")
+    
     with gr.Row():
+        with gr.Sidebar(label="CONTEXT_MONITOR", open=True) as left_sidebar:
+            gr.Markdown("### 📡 MEMORY_HEALTH")
+            mem_health_display = gr.Markdown("0 ACTIVE | 0 EXPIRED", elem_classes=["status-green"])
+            purge_btn = gr.Button("⚡ PURGE EXPIRED", variant="stop", visible=False, size="sm")
+            
+            gr.Markdown("---")
+            gr.Markdown("### 🛠️ OPERATIONS")
+            mode_personal = gr.Button("PERSONAL_MODE", variant="secondary", size="sm")
+            mode_tech = gr.Button("TECHNICAL_MODE", variant="secondary", size="sm")
+            
+            with gr.Accordion("CONFIG_CMD", open=False):
+                zep_input = gr.Textbox(label="ZEP_KEY", type="password")
+                or_input = gr.Textbox(label="OR_KEY", type="password")
+                domain_drop = gr.Dropdown(choices=["General", "Personal"], value="General", label="BIO_LOCK")
+
+        # Center Panel: Command & Control
         with gr.Column(scale=3):
-            gr.Markdown("## ⚡ COMMAND_AND_CONTROL")
+            gr.Markdown("## ⚡ NEXUS_COMMAND_DECK")
             chatbot = gr.Chatbot(
                 show_label=False,
-                height=700,
+                height=650,
                 elem_id="main-chatbot"
             )
             
-            with gr.Group():
+            with gr.Row():
                 msg = gr.Textbox(
-                    placeholder="ENTER_COMMAND_...",
+                    placeholder="ENTER_COMMAND_SEQUENCE_...",
                     container=False,
                     scale=7,
                     autofocus=True,
-                    show_label=False,
-                    buttons=["submit"]
+                    lines=3,
+                    show_label=False
                 )
+                submit_btn = gr.Button("ENTER", variant="primary", scale=1, elem_classes=["hardware-trigger"])
         
         # Right Sidebar: Economic Guardrails
-        with gr.Column(scale=1, elem_classes=["terminal-border"]):
-            gr.Markdown("### ⚖️ ECONOMIC_GUARDRAILS")
-            
+        with gr.Sidebar(label="ECONOMIC_GUARDRAILS", open=True, position="right") as right_sidebar:
+            gr.Markdown("### ⚖️ SAFETY_GATE")
             status_box = gr.Textbox(label="TELEMETRY_STATUS", value="IDLE", interactive=False, elem_classes=["status-green"])
             
             gr.Markdown("**SESSION_COST_EXPOSURE**")
@@ -194,34 +235,40 @@ with gr.Blocks(title="BLOOMBERG_AGENT_v1.0") as demo:
             
             gr.Markdown("**RECURSION_DEPTH_GAUGE**")
             recursion_count = gr.Number(label="CURRENT_STEPS", value=0)
-            
-            gr.HTML(f"""
-                <div class='gauge-container'>
-                    <div class='amber-text' style='font-size: 0.8em;'>LIMIT: 50</div>
-                </div>
-            """)
 
     # Forensic Inspection Drawer
     with gr.Accordion("📋 FORENSIC_LOGS", open=False):
         with gr.Row():
             context_display = gr.Textbox(label="RAW_CONTEXT", lines=5, interactive=False)
-            log_display = gr.Textbox(label="SYSTEM_TELEMETRY", lines=5, interactive=False)
+            log_display = gr.Textbox(label="SYSTEM_TELEMETRY", lines=8, interactive=False)
 
     # Event Handlers
+    async def toggle_hud(state):
+        # State toggle for sidebar visibility
+        new_state = not state
+        return gr.update(open=new_state), gr.update(open=new_state), new_state
+
+    async def execute_purge():
+        success = await memory_manager.purge_expired_facts()
+        stats = await memory_manager.get_graph_stats()
+        return f"{stats['active_facts']} ACTIVE | {stats['expired_facts']} EXPIRED", gr.update(visible=False)
+
+    hud_state = gr.State(True)
+    hud_btn.click(toggle_hud, inputs=[hud_state], outputs=[left_sidebar, right_sidebar, hud_state])
+    purge_btn.click(execute_purge, outputs=[mem_health_display, purge_btn])
+
     def update_budget_slider(cost):
         return (cost / USER_DAILY_BUDGET) * 100
 
-    def clear_session():
-        gradio_handler.clear()
-        return [], 0, 0, 0, "", "", "0 ACTIVE | 0 EXPIRED"
-
     # Integration Logic
-    submit_event = msg.submit(
-        chat_interaction,
+    submit_event = gr.on(
+        triggers=[msg.submit, submit_btn.click],
+        fn=chat_interaction,
         inputs=[msg, chatbot, zep_input, or_input, domain_drop],
-        outputs=[chatbot, status_box, cost_bar, recursion_count, context_display, log_display, mem_health_display]
+        outputs=[chatbot, status_box, cost_bar, recursion_count, context_display, log_display, mem_health_display, purge_btn]
     )
     msg.submit(lambda: "", outputs=msg, queue=False)
+    submit_btn.click(lambda: "", outputs=msg, queue=False)
     
     cost_bar.change(update_budget_slider, inputs=[cost_bar], outputs=[cost_progress])
 

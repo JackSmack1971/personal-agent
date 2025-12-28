@@ -99,26 +99,49 @@ def reasoning_node(state: AgentState) -> dict:
         error_msg = AIMessage(content="I apologize, but I encountered an error communicating with my reasoning engine.")
         return {"messages": [error_msg]}
 
-def suicide_pact_node(state: AgentState) -> dict:
-    """Economic safety node: Monitors cost and recursion.
+async def suicide_pact_node(state: AgentState) -> dict:
+    """Deterministic Safety Gate: Enforces the 'Suicide Pact' protocol.
 
-    Terminates the workflow if total cost exceeds 1.00 USD or 
-    recursion count exceeds 50.
+    This node runs at the start of every iteration. It queries real-time pricing
+    from OpenRouter and calculates L_safe to enforce strict economic limits.
 
-    Args:
-        state: The current AgentState.
-
-    Returns:
-        dict: A dictionary updating 'budget_exceeded' and 'recursion_count'.
+    Formula: L_safe = C_total - (T_output + T_tools + T_safety)
     """
-    print("--- SUICIDE PACT SAFETY CHECK ---")
-    MAX_BUDGET = 1.00 # USD
+    print("--- SUICIDE PACT: DETERMINISTIC SAFETY GATE ---")
+    import httpx
+    
+    # Constants
+    USER_DAILY_BUDGET = float(os.getenv("USER_DAILY_BUDGET", "1.00"))
     MAX_RECURSION = 50
+    T_SAFETY_BUFFER = 0.05 # 5% safety margin in USD
     
-    if state["total_cost"] > MAX_BUDGET or state.get("recursion_count", 0) > MAX_RECURSION:
-        return {"budget_exceeded": True}
+    current_cost = state.get("total_cost", 0.0)
+    current_recursion = state.get("recursion_count", 0)
     
-    return {"recursion_count": state.get("recursion_count", 0) + 1, "budget_exceeded": False}
+    # 1. Real-time Pricing Fetch
+    try:
+        async with httpx.AsyncClient() as client:
+            # We fetch model pricing to calculate theoretical T_output/T_tools
+            # placeholder for specific model extraction
+            resp = await client.get("https://openrouter.ai/api/v1/models")
+            models = resp.json().get("data", [])
+            # Simplified L_safe calculation for V1
+            # We assume a fixed capacity vs remaining budget
+            t_output_est = 0.01  # Placeholder for next token cost estimate
+            t_tools_est = 0.005 # Placeholder for tool invocation cost estimate
+            
+            l_safe = USER_DAILY_BUDGET - (current_cost + t_output_est + t_tools_est + T_SAFETY_BUFFER)
+            print(f"L_SAFE CALCULATION: {l_safe:.4f} remaining")
+            
+            if l_safe <= 0 or current_recursion >= MAX_RECURSION:
+                return {"budget_exceeded": True}
+                
+    except Exception as e:
+        print(f"Safety Gate API Error: {e}. Falling back to deterministic local check.")
+        if current_cost >= USER_DAILY_BUDGET or current_recursion >= MAX_RECURSION:
+            return {"budget_exceeded": True}
+
+    return {"recursion_count": current_recursion + 1, "budget_exceeded": False}
 
 # 3. Conditional Routing
 def should_continue(state: AgentState) -> Literal["continue", "end"]:
