@@ -81,106 +81,79 @@ async def chat_interaction(message, history, zep_key, openrouter_key, domain_fil
                 
         yield history, stats_str, current_context, gradio_handler.get_logs()
 
-# UI Theme Definition
+# UI Theme Definition: Native Gradio v6 Styling
 custom_theme = gr.themes.Soft(
     primary_hue="blue",
-    secondary_hue="cyan",
+    secondary_hue="slate",
     neutral_hue="slate",
     font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "sans-serif"],
+).set(
+    # Global Backgrounds
+    body_background_fill="#111827",
+    body_text_color="#f3f4f6",
+    block_background_fill="#1f2937",
+    block_label_text_color="#9ca3af",
+    
+    # Input Backgrounds
+    input_background_fill="#374151",
+    input_border_color="rgba(255, 255, 255, 0.1)",
+
+    # Button Colors
+    button_primary_background_fill="#3b82f6",
+    button_primary_text_color="white",
+    
+    # Chat specific overrides (if supported by theme variables)
+    background_fill_secondary="#111827",
+    border_color_primary="rgba(255, 255, 255, 0.05)",
 )
 
-# Custom CSS for SaaS-Quality "Cockpit" Aesthetics
+# Minimal CSS for branding and glassmorphism (where native variables are insufficient)
 css = """
-/* Global Foundation */
-.gradio-container {
-    background-color: #111827 !important; /* Softer Dark Gray */
-    color: #f3f4f6 !important;
-}
-
-/* Sidebar: Refined Glassmorphism */
-.sidebar {
-    background: rgba(17, 24, 39, 0.8) !important;
+.sidebar-glass {
+    background: rgba(17, 24, 39, 0.7) !important;
     backdrop-filter: blur(16px);
-    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-    box-shadow: 4px 0 24px -12px rgba(0, 0, 0, 0.8);
+    border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Chatbot: Bubble Implementation */
-.chatbot {
-    border: none !important;
-    background: transparent !important;
+.stats-card {
+    border-left: 4px solid #3b82f6;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 12px;
+    border-radius: 8px;
 }
-.chatbot .message {
-    border-radius: 16px !important;
-    padding: 12px 16px !important;
-    max-width: 85% !important;
-    margin-bottom: 12px !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
-}
-.chatbot .message.user {
-    background: #3b82f6 !important; /* Vibrant Blue */
-    color: white !important;
-    align-self: flex-end !important;
-    border-bottom-right-radius: 4px !important;
-}
-.chatbot .message.bot {
-    background: #1f2937 !important; /* Muted Gray */
-    color: #f3f4f6 !important;
-    align-self: flex-start !important;
-    border-bottom-left-radius: 4px !important;
+
+/* Fix for Chatbot background and bubble styling in v6 */
+#main-chatbot {
+    background-color: #111827 !important;
     border: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Action Hierarchy Styling */
-.icon-btn {
-    min-width: 50px !important;
-    aspect-ratio: 1/1 !important;
-    background: #3b82f6 !important;
-    border-radius: 12px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+/* Force dark theme for Gradio prose/markdown items in chat */
+.prose {
+    color: #f3f4f6 !important;
 }
 
-.ghost-btn {
-    background: transparent !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: #9ca3af !important;
-    font-size: 0.85em !important;
-    transition: all 0.2s ease !important;
-}
-.ghost-btn:hover {
-    background: rgba(255, 255, 255, 0.05) !important;
-    border-color: rgba(255, 255, 255, 0.3) !important;
+/* Chat bubble overrides */
+.chatbot .message.user {
+    background-color: #2563eb !important;
     color: white !important;
 }
-
-/* Input Fields Refinement */
-input, textarea, select {
+.chatbot .message.bot {
     background-color: #1f2937 !important;
+    color: #f3f4f6 !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 12px !important;
 }
 
-.stats-markdown {
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 0.85em !important;
-    color: #60a5fa !important;
-    background: rgba(31, 41, 55, 0.5);
-    padding: 8px 12px;
-    border-radius: 10px;
-    border-left: 3px solid #3b82f6;
-}
-
-/* Accordion & Grouping */
-.accordion {
-    border: none !important;
-    background: transparent !important;
+/* Layout stabilization for Integrated Submit Button */
+.integrated-submit-fix .gr-button {
+    height: 42px !important;
+    align-self: flex-end !important;
+    margin-bottom: 2px !important;
 }
 """
 
-with gr.Blocks(fill_height=True, title="Agent Nexus v1") as demo:
-    with gr.Sidebar(label="Control Center", open=True, elem_classes=["sidebar"]):
+with gr.Blocks(fill_height=True, title="Nexus Agent v1") as demo:
+    with gr.Sidebar(label="Navigation", open=True, elem_classes=["sidebar-glass"]):
         gr.Markdown("# 🛸 Nexus")
         gr.Markdown("---")
 
@@ -194,52 +167,57 @@ with gr.Blocks(fill_height=True, title="Agent Nexus v1") as demo:
             )
         
         gr.Markdown("### 📊 Live Metrics")
-        stats_box = gr.Markdown("Cost: $0.0000 | Depth: 0", elem_classes=["stats-markdown"])
+        with gr.Group(elem_classes=["stats-card"]):
+            stats_box = gr.Markdown("Cost: $0.0000 | Depth: 0")
         
         gr.Markdown("---")
         gr.Markdown("Thread: `" + THREAD_ID[:8] + "`")
 
-    # The "Stage" (Main Canvas)
-    with gr.Column(scale=4, elem_id="canvas-area"):
+    # Main Canvas
+    with gr.Column(scale=4):
         gr.Markdown("## 🧠 Personal Context-Aware Agent")
         
         chatbot = gr.Chatbot(
+            value=[], # Prevent "Error" state on load
             show_label=False,
             avatar_images=(None, "https://api.dicebear.com/7.x/bottts/svg?seed=Agent"),
-            height=600,
+            height=620,
             elem_id="main-chatbot"
         )
         
-        # Action Bar (Cockpit Controls)
-        with gr.Group():
-            with gr.Row():
-                msg = gr.Textbox(
-                    placeholder="Type your objective...",
-                    container=False,
-                    scale=7,
-                    autofocus=True
-                )
-                submit = gr.Button("🚀", variant="primary", elem_classes=["icon-btn"], min_width=50, scale=0)
+        # Action Bar: Native Textbox Integration
+        with gr.Group(elem_classes=["integrated-submit-fix"]):
+            msg = gr.Textbox(
+                placeholder="Declare your objective...",
+                container=False,
+                scale=7,
+                autofocus=True,
+                show_label=False,
+                value="", # Prevent Error state
+                buttons=["submit"] # Native v6 Integrated Button
+            )
             
             with gr.Row():
-                stop = gr.Button("🛑 Stop", variant="secondary", elem_classes=["ghost-btn"], scale=1)
-                clear = gr.Button("🧹 Clear Session", elem_classes=["ghost-btn"], scale=1)
+                stop = gr.Button("🛑 Stop", variant="secondary", size="sm")
+                clear = gr.Button("🧹 Reset", variant="secondary", size="sm")
 
-    # Inspection Panels (Drawer)
+    # Forensic Inspection
     with gr.Accordion("🔍 Forensic Inspection", open=False):
         with gr.Row():
             with gr.Column():
-                gr.Markdown("#### Context Context")
+                gr.Markdown("#### Context Engine")
                 context_display = gr.Textbox(
-                    placeholder="Memory will reveal here...",
+                    value="", # Prevent Error state
+                    placeholder="Memory nodes will appear here...",
                     show_label=False,
                     lines=8,
                     max_lines=15,
                     interactive=False
                 )
             with gr.Column():
-                gr.Markdown("#### Logs")
+                gr.Markdown("#### Process Logs")
                 log_display = gr.Textbox(
+                    value="", # Prevent Error state
                     show_label=False,
                     lines=8,
                     max_lines=15,
@@ -257,16 +235,9 @@ with gr.Blocks(fill_height=True, title="Agent Nexus v1") as demo:
         outputs=[chatbot, stats_box, context_display, log_display]
     )
     msg.submit(lambda: "", outputs=msg, queue=False)
-
-    click_event = submit.click(
-        chat_interaction, 
-        inputs=[msg, chatbot, zep_input, or_input, domain_drop], 
-        outputs=[chatbot, stats_box, context_display, log_display]
-    )
-    submit.click(lambda: "", outputs=msg, queue=False)
     
     clear.click(clear_wrapper, outputs=[chatbot, stats_box, context_display, log_display])
-    stop.click(fn=None, inputs=None, outputs=None, cancels=[submit_event, click_event])
+    stop.click(fn=None, inputs=None, outputs=None, cancels=[submit_event])
 
 if __name__ == "__main__":
     demo.launch(theme=custom_theme, css=css)
